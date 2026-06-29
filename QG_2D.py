@@ -192,6 +192,26 @@ class QG2D:
             _save_netcdf(ds, path)
         return ds
 
+    @staticmethod
+    def load(path):
+        """
+        Load a previously saved run, returning an in-memory xarray Dataset.
+
+        The file is read fully into memory and the handle is closed before
+        returning, so no lazy file lock is left open -- this is what lets a
+        later run(..., path=...) overwrite the same file on Windows/OneDrive.
+        Reads HDF5-based netCDF and falls back to the scipy backend.
+        """
+        import xarray as xr
+
+        try:
+            ds = xr.open_dataset(path)
+        except (ValueError, OSError):
+            ds = xr.open_dataset(path, engine="scipy")
+        ds.load()
+        ds.close()
+        return ds
+
 
 def _save_netcdf(ds, path):
     """

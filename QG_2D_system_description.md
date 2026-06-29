@@ -46,7 +46,7 @@ zonal (banded) structures.
 
 **Default forcing.** Unless overridden, $F$ is a stationary Kolmogorov forcing,
 
-$$F(x,y) = A\,\cos(k_f\, y),$$
+$$F(x,y) = A \cdot \cos(k_f\, y),$$
 
 which injects energy at a single meridional wavenumber $k_f$ and drives a shear
 flow that is unstable to a sustained chaotic eddy field.
