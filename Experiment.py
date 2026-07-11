@@ -112,12 +112,18 @@ class Experiment:
 
     # ------------------------------------------------------------------ #
     def assimilate(self, ncycles=None, method="enkf", ml_model=None, x0=None,
-                   save_path=None, progress=True):
+                   schedule=None, ml_obs=None, save_path=None, progress=True):
         """
         Run the cycled assimilation.
 
         :param ncycles: number of observation cycles to assimilate (default: all)
-        :param method: 'enkf' or 'ml'
+        :param method: 'enkf' or 'ml' (used when schedule is None)
+        :param schedule: optional list applied per cycle, cycled with the cycle
+                   index, of 'enkf' / 'ml' / 'skip' (skip = forecast only, no
+                   analysis). Enables sequences like ['enkf','ml','skip'].
+        :param ml_obs: optional observation Dataset used only on 'ml' steps
+                   (defaults to the main obs). Lets an ML step read dense
+                   observations while the EnKF steps use sparse ones.
         :param ml_model: object with .assimilate(xf_mean, y, obs_idx) -> analysis mean
         :param x0: background field the initial ensemble is centred on
                    (default: the truth at time 0; pass the control state for a
@@ -137,6 +143,14 @@ class Experiment:
 
         truth = self.truth["q"].values.reshape(len(times), n)
         obs_flat = self.obs["obs"].values.reshape(len(times), n)
+
+        # optional separate observation set for ML steps (e.g. dense obs the
+        # sparse EnKF cannot afford every cycle -- the Howard et al. idea)
+        if ml_obs is not None:
+            ml_obs_flat = ml_obs["obs"].values.reshape(len(times), n)
+            ml_idx = np.flatnonzero(np.asarray(ml_obs["mask"].values, bool).ravel())
+        else:
+            ml_obs_flat, ml_idx = obs_flat, self.obs_idx
 
         # initial ensemble centred on the background x0 (offset from truth)
         if x0 is None:
@@ -169,9 +183,15 @@ class Experiment:
 
             y = obs_flat[i][self.obs_idx]              # observed values this cycle
 
-            if method == "ml" and ml_model is not None:
-                # ML operator returns an analysis *mean*; recenter the ensemble on it
-                xa = ml_model.assimilate(xf_mean[i], y, self.obs_idx)
+            step = schedule[(i - 1) % len(schedule)] if schedule else method
+            if step == "skip":
+                Xa = Xf                                     # forecast only, no update
+            elif step == "ml" and ml_model is not None:
+                # ML returns an analysis *mean*; shift every member by that
+                # increment (recenter the ensemble on the ML analysis). The ML
+                # step may read a different (e.g. dense) observation set.
+                y_ml = ml_obs_flat[i][ml_idx]
+                xa = ml_model.assimilate(xf_mean[i], y_ml, ml_idx)
                 Xa = Xf + (xa - xf_mean[i])[:, None]
             else:
                 Xa = self.enkf.analysis(Xf, y, self.r)
